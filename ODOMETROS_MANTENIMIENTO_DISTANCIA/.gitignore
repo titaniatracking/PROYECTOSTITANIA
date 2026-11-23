@@ -1,0 +1,4 @@
+config.json
+__pycache__/
+web_jobs_mantenimiento_distancia/
+*.log
