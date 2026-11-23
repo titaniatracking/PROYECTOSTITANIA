@@ -1,0 +1,14 @@
+{
+  "mysql": {
+    "host": "SERVIDOR_MYSQL",
+    "user": "USUARIO_SOLO_LECTURA",
+    "password": "CAMBIAR_ESTA_CLAVE",
+    "port": 3306
+  },
+  "db_origen": "vapor",
+  "flespi": {
+    "token": "TOKEN_FLESPI",
+    "calc_id": 1931826
+  },
+  "diferencia_razonable_km": 500
+}
