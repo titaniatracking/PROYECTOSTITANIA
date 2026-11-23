@@ -154,9 +154,33 @@ PAGE = """
       background: var(--bg);
       color: var(--ink);
     }
+    .sidebar {
+      position: fixed;
+      inset: 0 auto 0 0;
+      width: 248px;
+      padding: 24px 16px;
+      background: #0f2742;
+      color: white;
+      display: flex;
+      flex-direction: column;
+      z-index: 10;
+      box-shadow: 10px 0 30px rgba(15,39,66,.12);
+    }
+    .brand { padding: 4px 10px 22px; border-bottom: 1px solid rgba(255,255,255,.14); }
+    .brandMark { display:flex; align-items:center; gap:10px; font-weight:800; font-size:18px; }
+    .brandIcon { width:38px; height:38px; display:grid; place-items:center; border-radius:11px; background:linear-gradient(135deg,#1c7ed6,#20c997); }
+    .brand small { display:block; margin-top:7px; color:#a9bdd1; font-size:12px; letter-spacing:.8px; }
+    .navLabel { margin:22px 10px 9px; color:#91a8bd; font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:1px; }
+    .sideNav { display:grid; gap:7px; }
+    .sideNav a { display:flex; align-items:center; gap:11px; padding:12px 13px; border-radius:10px; color:#d9e8f5; text-decoration:none; font-size:14px; font-weight:700; border:1px solid transparent; }
+    .sideNav a:hover { background:rgba(255,255,255,.08); color:white; }
+    .sideNav a.active { color:white; background:linear-gradient(135deg,#155eef,#087f5b); border-color:rgba(255,255,255,.2); box-shadow:0 8px 18px rgba(0,0,0,.18); }
+    .navIcon { width:28px; height:28px; display:grid; place-items:center; border-radius:8px; background:rgba(255,255,255,.1); font-size:13px; }
+    .sidebarFoot { margin-top:auto; padding:14px 10px 2px; border-top:1px solid rgba(255,255,255,.14); color:#a9bdd1; font-size:12px; line-height:1.5; }
     .wrap {
-      width: min(1120px, calc(100% - 32px));
-      margin: 28px auto;
+      width: auto;
+      max-width: 1440px;
+      margin: 28px 28px 28px 276px;
     }
     header {
       display: flex;
@@ -167,9 +191,6 @@ PAGE = """
     }
     h1 { font-size: 24px; margin: 0; letter-spacing: 0; }
     .status { color: var(--muted); font-size: 14px; }
-    .moduleNav { display:flex; flex-wrap:wrap; gap:8px; justify-content:flex-end; }
-    .moduleNav a { text-decoration:none; color:#334e68; border:1px solid var(--line); background:white; border-radius:999px; padding:8px 11px; font-size:13px; font-weight:700; }
-    .moduleNav a:hover, .moduleNav a.active { color:white; border-color:#087f5b; background:#087f5b; }
     .hero {
       background: linear-gradient(120deg, #0d4f8b, #155eef 55%, #168a4a);
       color: white;
@@ -326,17 +347,34 @@ PAGE = """
       .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       header { align-items: flex-start; flex-direction: column; }
     }
+    @media (max-width: 900px) {
+      .sidebar { position:static; width:auto; min-height:0; padding:14px; }
+      .brand { padding:0 4px 12px; }
+      .brand small, .navLabel, .sidebarFoot { display:none; }
+      .sideNav { grid-template-columns:repeat(3,minmax(0,1fr)); }
+      .sideNav a { justify-content:center; }
+      .wrap { width:min(1120px,calc(100% - 28px)); margin:18px auto; }
+    }
   </style>
 </head>
 <body>
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brandMark"><span class="brandIcon">KM</span><span>Odómetros</span></div>
+      <small>TITANIA · CENTRO OPERATIVO</small>
+    </div>
+    <div class="navLabel">Módulos</div>
+    <nav class="sideNav" aria-label="Módulos de odómetros">
+      <a href="http://127.0.0.1:8062"><span class="navIcon">⌂</span><span>Inicio</span></a>
+      <a href="http://127.0.0.1:8060"><span class="navIcon">RC</span><span>Recepción</span></a>
+      <a class="active" href="http://127.0.0.1:8061"><span class="navIcon">DT</span><span>Distancia</span></a>
+    </nav>
+    <div class="sidebarFoot">Módulo activo<br><b style="color:white">Distancia diaria Flespi</b></div>
+  </aside>
   <main class="wrap">
     <header>
-      <div><h1>Odómetros por distancia</h1><div class="status" id="jobLabel">Sin proceso activo</div></div>
-      <nav class="moduleNav" aria-label="Módulos de odómetros">
-        <a href="http://127.0.0.1:8062">☰ Menú</a>
-        <a href="http://127.0.0.1:8060">Recepción</a>
-        <a class="active" href="http://127.0.0.1:8061">Distancia</a>
-      </nav>
+      <h1>Odómetros por distancia</h1>
+      <div class="status" id="jobLabel">Sin proceso activo</div>
     </header>
 
     <section class="hero">
