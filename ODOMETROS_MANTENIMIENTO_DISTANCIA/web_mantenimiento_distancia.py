@@ -167,6 +167,9 @@ PAGE = """
     }
     h1 { font-size: 24px; margin: 0; letter-spacing: 0; }
     .status { color: var(--muted); font-size: 14px; }
+    .moduleNav { display:flex; flex-wrap:wrap; gap:8px; justify-content:flex-end; }
+    .moduleNav a { text-decoration:none; color:#334e68; border:1px solid var(--line); background:white; border-radius:999px; padding:8px 11px; font-size:13px; font-weight:700; }
+    .moduleNav a:hover, .moduleNav a.active { color:white; border-color:#087f5b; background:#087f5b; }
     .hero {
       background: linear-gradient(120deg, #0d4f8b, #155eef 55%, #168a4a);
       color: white;
@@ -328,8 +331,12 @@ PAGE = """
 <body>
   <main class="wrap">
     <header>
-      <h1>Odómetros por distancia</h1>
-      <div class="status" id="jobLabel">Sin proceso activo</div>
+      <div><h1>Odómetros por distancia</h1><div class="status" id="jobLabel">Sin proceso activo</div></div>
+      <nav class="moduleNav" aria-label="Módulos de odómetros">
+        <a href="http://127.0.0.1:8062">☰ Menú</a>
+        <a href="http://127.0.0.1:8060">Recepción</a>
+        <a class="active" href="http://127.0.0.1:8061">Distancia</a>
+      </nav>
     </header>
 
     <section class="hero">
