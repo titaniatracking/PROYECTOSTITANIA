@@ -38,7 +38,7 @@ def normalize_chassis(value):
 
 
 def resolve_devices_by_chassis(chassis_values):
-    """Obtiene el equipo activo (o la Ãºltima asignaciÃ³n) por chasis desde Vapor."""
+    """Obtiene el equipo activo (o la última asignación) por chasis desde Vapor."""
     chassis = sorted({normalize_chassis(value) for value in chassis_values if normalize_chassis(value)})
     if not chassis:
         return {}
@@ -91,7 +91,7 @@ def write_workbook(headers, rows, output_path, sheet_name="MANTENIMIENTO"):
 
 
 def enrich_workbook_by_chassis(input_path, output_path):
-    """Completa ID_FLESPI, IMEI y datos del vehÃ­culo si el archivo trae CHASIS."""
+    """Completa ID_FLESPI, IMEI y datos del vehículo si el archivo trae CHASIS."""
     headers, rows = read_xlsx_rows(input_path)
     headers = headers or []
     if "CHASIS" not in headers:
@@ -346,16 +346,16 @@ PAGE = """
 <body>
   <aside class="sidebar">
     <div class="brand">
-      <div class="brandMark"><span class="brandIcon">KM</span><span>OdÃ³metros</span></div>
-      <small>TITANIA Â· CENTRO OPERATIVO</small>
+      <div class="brandMark"><span class="brandIcon">KM</span><span>Odómetros</span></div>
+      <small>TITANIA · CENTRO OPERATIVO</small>
     </div>
-    <div class="navLabel">MÃ³dulos</div>
-    <nav class="sideNav" aria-label="MÃ³dulos de odÃ³metros">
-      <a href="http://127.0.0.1:8062"><span class="navIcon">âŒ‚</span><span>Inicio</span></a>
-      <a class="active" href="http://127.0.0.1:8060"><span class="navIcon">RC</span><span>RecepciÃ³n</span></a>
+    <div class="navLabel">Módulos</div>
+    <nav class="sideNav" aria-label="Módulos de odómetros">
+      <a href="http://127.0.0.1:8062"><span class="navIcon">⌂</span><span>Inicio</span></a>
+      <a class="active" href="http://127.0.0.1:8060"><span class="navIcon">RC</span><span>Recepción</span></a>
       <a href="http://127.0.0.1:8061"><span class="navIcon">DT</span><span>Distancia</span></a>
     </nav>
-    <div class="sidebarFoot">MÃ³dulo activo<br><b style="color:white">Mantenimiento por recepciÃ³n</b></div>
+    <div class="sidebarFoot">Módulo activo<br><b style="color:white">Mantenimiento por recepción</b></div>
   </aside>
   <main class="wrap">
     <header>
@@ -377,18 +377,18 @@ PAGE = """
       <p>
         <a class="download" href="/api/template/download">Descargar plantilla XLSX ejemplo</a>
       </p>
-      <p class="muted">Si el archivo trae <b>CHASIS</b>, el sistema busca automÃ¡ticamente IMEI e ID Flespi en Vapor. Para calcular el odÃ³metro debe incluir <b>FECHA_RECEPCION</b> y <b>KM_RECEPCION</b>.</p>
+      <p class="muted">Si el archivo trae <b>CHASIS</b>, el sistema busca automáticamente IMEI e ID Flespi en Vapor. Para calcular el odómetro debe incluir <b>FECHA_RECEPCION</b> y <b>KM_RECEPCION</b>.</p>
     </section>
 
     <section class="panel selection" id="selectionPanel">
-      <h2 style="margin-top:0;font-size:18px">Paso 1: selecciona los odÃ³metros para analizar</h2>
-      <p class="muted">Esta acciÃ³n solamente calcula y genera el Excel. No realiza cambios en Flespi.</p>
+      <h2 style="margin-top:0;font-size:18px">Paso 1: selecciona los odómetros para analizar</h2>
+      <p class="muted">Esta acción solamente calcula y genera el Excel. No realiza cambios en Flespi.</p>
       <div class="selectionTools">
         <button type="button" id="selectAllButton">Marcar para analizar</button>
-        <button type="button" class="secondary" id="clearSelectionButton">Quitar selecciÃ³n</button>
+        <button type="button" class="secondary" id="clearSelectionButton">Quitar selección</button>
         <input id="rowSearch" type="search" placeholder="Buscar placa, chasis, modelo o ID Flespi">
         <b id="selectionCount">0 seleccionados</b>
-        <button type="button" id="analyzeSelectionButton" class="download" disabled>Analizar selecciÃ³n y descargar Excel</button>
+        <button type="button" id="analyzeSelectionButton" class="download" disabled>Analizar selección y descargar Excel</button>
       </div>
       <div class="tableWrap">
         <table>
@@ -412,7 +412,7 @@ PAGE = """
 
     <section class="panel selection" id="resultsPanel">
       <h2 style="margin-top:0;font-size:18px">Paso 2 (opcional): actualizar Flespi</h2>
-      <p>El Excel calculado ya estÃ¡ disponible para descargar. Si ademÃ¡s deseas cambiar Flespi, selecciona los registros aprobados y pulsa el botÃ³n de actualizaciÃ³n. <b>RAZONABLE:</b> diferencia absoluta hasta 500 km; <b>REVISAR:</b> diferencia mayor.</p>
+      <p>El Excel calculado ya está disponible para descargar. Si además deseas cambiar Flespi, selecciona los registros aprobados y pulsa el botón de actualización. <b>RAZONABLE:</b> diferencia absoluta hasta 500 km; <b>REVISAR:</b> diferencia mayor.</p>
       <div class="selectionTools">
         <button type="button" id="selectResultsButton">Marcar ACTUALIZAR</button>
         <button type="button" class="secondary" id="clearResultsButton">Desmarcar todos</button>
@@ -429,12 +429,12 @@ PAGE = """
       </div>
       <div class="tableWrap">
         <table>
-          <thead><tr><th></th><th>Accion</th><th>Placa</th><th>Chasis</th><th>KM recepciÃ³n</th><th>KM Flespi en recepciÃ³n</th><th>KM calculado hoy</th><th>KM_FLESPI_ACTUAL</th><th>Diferencia</th><th>Estado diferencia</th><th>Estado calculo</th><th>Mensaje</th></tr></thead>
+          <thead><tr><th></th><th>Accion</th><th>Placa</th><th>Chasis</th><th>KM recepción</th><th>KM Flespi en recepción</th><th>KM calculado hoy</th><th>KM_FLESPI_ACTUAL</th><th>Diferencia</th><th>Estado diferencia</th><th>Estado calculo</th><th>Mensaje</th></tr></thead>
           <tbody id="resultRows"></tbody>
         </table>
       </div>
       <div id="updateProgress">
-        <p><b id="updateState">Preparando actualizacion...</b> â€” <span id="updatePercent">0%</span></p>
+        <p><b id="updateState">Preparando actualizacion...</b> — <span id="updatePercent">0%</span></p>
         <div class="progressbar"><div id="updateBar"></div></div>
         <div class="grid">
           <div class="metric"><b id="updateDone">0/0</b><span>Procesados</span></div>
@@ -598,7 +598,7 @@ PAGE = """
       button.disabled = selectedRows.size === 0;
       analyzeSelectionButton.disabled = selectedRows.size === 0;
       button.textContent = selectedRows.size ? `Analizar ${selectedRows.size} seleccionados` : "Analizar y generar Excel";
-      analyzeSelectionButton.textContent = selectedRows.size ? `Analizar ${selectedRows.size} y descargar Excel` : "Analizar selecciÃ³n y descargar Excel";
+      analyzeSelectionButton.textContent = selectedRows.size ? `Analizar ${selectedRows.size} y descargar Excel` : "Analizar selección y descargar Excel";
     }
 
     selectAllButton.addEventListener("click", () => {
@@ -661,7 +661,7 @@ PAGE = """
         clearInterval(timer);
         button.disabled = false;
         if (body.success) {
-          downloadBox.innerHTML = `<a class="download" href="/api/jobs/${activeJob}/download">Descargar Excel con cÃ¡lculo</a><span class="muted"> El archivo fue analizado; Flespi aÃºn no ha sido actualizado.</span>`;
+          downloadBox.innerHTML = `<a class="download" href="/api/jobs/${activeJob}/download">Descargar Excel con cálculo</a><span class="muted"> El archivo fue analizado; Flespi aún no ha sido actualizado.</span>`;
           await loadResults();
         }
       }
@@ -721,7 +721,7 @@ PAGE = """
     differenceFilter.addEventListener("change", renderResultRows);
     applyUpdatesButton.addEventListener("click", async () => {
       if (!activeJob || !selectedResults.size) return;
-      if (!window.confirm(`Se enviaran ${selectedResults.size} actualizaciones reales a Flespi. Los kilometrajes se redondearan a enteros. Â¿Continuar?`)) return;
+      if (!window.confirm(`Se enviaran ${selectedResults.size} actualizaciones reales a Flespi. Los kilometrajes se redondearan a enteros. ¿Continuar?`)) return;
       applyUpdatesButton.disabled = true;
       updateProgress.classList.add("show");
       updateLog.textContent = "Preparando envio a Flespi...";
@@ -1138,7 +1138,7 @@ def create_job():
         return jsonify({"error": "Solo se aceptan archivos .xlsx"}), 400
 
     calculation_mode = request.form.get("calculation_mode", "calculadora")
-    # Compatibilidad con pestaÃ±as que quedaron abiertas antes del cambio de metodo.
+    # Compatibilidad con pestañas que quedaron abiertas antes del cambio de metodo.
     if calculation_mode == "configuracion_dispositivo":
         calculation_mode = "reporte_diario"
     if calculation_mode not in {"calculadora", "reporte_diario"}:
@@ -1375,4 +1375,3 @@ def download_template():
 if __name__ == "__main__":
     JOBS_DIR.mkdir(parents=True, exist_ok=True)
     app.run(host="127.0.0.1", port=8060, debug=False)
-
