@@ -30,6 +30,8 @@ DEFAULT_CALC_ID = 1931826
 CALC_COUNTER = "distancia_en_movimiento"
 DEFAULT_REASONABLE_DIFFERENCE_KM = 500
 MAX_REASONABLE_DAILY_KM = 1000
+HIGH_ANNUAL_KM = 30000
+VERY_HIGH_ANNUAL_KM = 50000
 
 
 HTTP = requests.Session()
@@ -370,6 +372,9 @@ def write_output(headers, rows, output_file=OUTPUT_FILE):
         "KM_FLESPI_FECHA_RECEPCION",
         "FECHA_FLESPI_ACTUAL",
         "KM_RECORRIDO_FLESPI",
+        "KM_ANUAL_PROYECTADO",
+        "NIVEL_USO_ANUAL",
+        "VALIDACION_ANIO_VEHICULO",
         "KM_DEBERIA_ESTAR_HOY",
         "KM_ACTUAL_ESTIMADO",
         "KM_FLESPI_ACTUAL",
@@ -426,16 +431,40 @@ def finalize_output(headers, rows, results, ahora, output_file, method_name, dif
         origen = entry["origen"]
         km_flespi_actual = entry.get("km_flespi_actual")
 
-        if (
-            status == "OK"
-            and km_recorrido is not None
-            and km_flespi_actual is not None
-            and km_recorrido > km_flespi_actual
-        ):
-            status = "RECORRIDO_MAYOR_QUE_ODOMETRO_ACTUAL"
+        if km_recorrido is not None and km_flespi_actual is not None and km_recorrido > km_flespi_actual:
+            recorrido_original = km_recorrido
+            km_recorrido = max(0, km_flespi_actual)
             obs.append(
-                "Recorrido acumulado mayor que el odometro actual; revisar fecha, reasignacion o reinicio del dispositivo"
+                f"Recorrido limitado al odometro actual: {recorrido_original:.2f} -> {km_recorrido:.2f} km"
             )
+
+        fecha_base = entry.get("fecha_base") or fecha
+        dias_calculo = None
+        km_anual_proyectado = None
+        if fecha_base and km_recorrido is not None:
+            dias_calculo = max(1.0, (ahora - fecha_base.astimezone(timezone.utc)).total_seconds() / 86400)
+            km_anual_proyectado = max(0, km_recorrido) * 365 / dias_calculo
+        if km_anual_proyectado is None:
+            nivel_uso = "SIN DATOS"
+        elif km_anual_proyectado > VERY_HIGH_ANNUAL_KM:
+            nivel_uso = "MUY ALTO"
+        elif km_anual_proyectado > HIGH_ANNUAL_KM:
+            nivel_uso = "ALTO"
+        else:
+            nivel_uso = "NORMAL"
+
+        anio_value = parse_float(row.get("ANIO_VEHICULO"))
+        anio_vehiculo = int(anio_value) if anio_value is not None else None
+        current_year = ahora.astimezone(EC_TZ).year
+        if anio_vehiculo is None:
+            validacion_anio = "SIN ANIO"
+        elif anio_vehiculo > current_year + 1 or anio_vehiculo < 1980:
+            validacion_anio = f"ANIO INVALIDO: {anio_vehiculo}"
+        else:
+            antiguedad = max(0, current_year - anio_vehiculo)
+            validacion_anio = f"ANIO {anio_vehiculo} | {antiguedad} ANOS | USO {nivel_uso}"
+        if nivel_uso in {"ALTO", "MUY ALTO"}:
+            obs.append(f"Uso {nivel_uso.lower()} para el periodo: {km_anual_proyectado:.0f} km/anio proyectados")
 
         km_estimado = None
         if status == "OK" and km_recorrido is not None and km_taller is not None:
@@ -449,7 +478,6 @@ def finalize_output(headers, rows, results, ahora, output_file, method_name, dif
         km_flespi_recepcion = entry.get("km_flespi_base")
         if km_flespi_recepcion is None:
             km_flespi_recepcion = km_flespi_en_fecha_base(km_flespi_actual, km_recorrido)
-        fecha_base = entry.get("fecha_base") or fecha
         diferencia = km_estimado - km_flespi_actual if km_estimado is not None and km_flespi_actual is not None else None
         difference_status = classify_difference(diferencia, difference_limit)
         if status == "OK" and difference_status == "REVISAR":
@@ -463,6 +491,9 @@ def finalize_output(headers, rows, results, ahora, output_file, method_name, dif
             "KM_FLESPI_FECHA_RECEPCION": round(km_flespi_recepcion, 2) if km_flespi_recepcion is not None else None,
             "FECHA_FLESPI_ACTUAL": ahora.astimezone(EC_TZ).strftime("%Y-%m-%d %H:%M:%S"),
             "KM_RECORRIDO_FLESPI": round(km_recorrido, 2) if km_recorrido is not None else None,
+            "KM_ANUAL_PROYECTADO": round(km_anual_proyectado, 2) if km_anual_proyectado is not None else None,
+            "NIVEL_USO_ANUAL": nivel_uso,
+            "VALIDACION_ANIO_VEHICULO": validacion_anio,
             "KM_DEBERIA_ESTAR_HOY": round(km_estimado, 2) if km_estimado is not None else None,
             "KM_ACTUAL_ESTIMADO": round(km_estimado, 2) if km_estimado is not None else None,
             "KM_FLESPI_ACTUAL": round(km_flespi_actual, 2) if km_flespi_actual is not None else None,
