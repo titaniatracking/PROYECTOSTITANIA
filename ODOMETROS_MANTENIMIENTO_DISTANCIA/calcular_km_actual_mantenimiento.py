@@ -135,7 +135,8 @@ def km_flespi_en_fecha_base(km_actual, km_recorrido):
     """Estima el odómetro Flespi en la fecha base restando el recorrido posterior."""
     if km_actual is None or km_recorrido is None:
         return None
-    return km_actual - max(0, km_recorrido)
+    resultado = km_actual - max(0, km_recorrido)
+    return resultado if resultado >= 0 else None
 
 
 def first_km_base(row, headers):
@@ -372,9 +373,21 @@ def finalize_output(headers, rows, results, ahora, output_file, method_name, dif
         obs = entry["obs"]
         km_recorrido = entry["km_recorrido"]
         origen = entry["origen"]
+        km_flespi_actual = entry.get("km_flespi_actual")
+
+        if (
+            status == "OK"
+            and km_recorrido is not None
+            and km_flespi_actual is not None
+            and km_recorrido > km_flespi_actual
+        ):
+            status = "RECORRIDO_MAYOR_QUE_ODOMETRO_ACTUAL"
+            obs.append(
+                "Recorrido acumulado mayor que el odometro actual; revisar fecha, reasignacion o reinicio del dispositivo"
+            )
 
         km_estimado = None
-        if km_recorrido is not None and km_taller is not None:
+        if status == "OK" and km_recorrido is not None and km_taller is not None:
             if km_recorrido < -1:
                 status = "KM_REVISAR"
                 obs.append(f"Distancia negativa segun {origen}")
@@ -382,7 +395,6 @@ def finalize_output(headers, rows, results, ahora, output_file, method_name, dif
         elif status == "OK":
             status = "SIN_DATOS_CALC"
 
-        km_flespi_actual = entry.get("km_flespi_actual")
         km_flespi_recepcion = km_flespi_en_fecha_base(km_flespi_actual, km_recorrido)
         diferencia = km_estimado - km_flespi_actual if km_estimado is not None and km_flespi_actual is not None else None
         difference_status = classify_difference(diferencia, difference_limit)
@@ -443,6 +455,7 @@ def main():
     for row in rows:
         row["_id_flespi"] = str(row.get("ID_FLESPI") or "").strip()
         row["_fecha"] = parse_date(row.get("FECHA_RECEPCION"))
+        row["_fecha_inicio_dispositivo"] = parse_date(row.get("FECHA_INICIO_DISPOSITIVO"))
         row["_km_base_taller"] = first_km_base(row, headers)
 
     ids = sorted({row["_id_flespi"] for row in rows if row["_id_flespi"]})
@@ -469,6 +482,7 @@ def main():
         for index, row in enumerate(rows):
             device_id = row["_id_flespi"]
             fecha = row["_fecha"]
+            fecha_inicio_dispositivo = row["_fecha_inicio_dispositivo"]
             km_taller = row["_km_base_taller"]
             status = "OK"
             obs = []
@@ -478,6 +492,11 @@ def main():
                 status = "SIN FECHA"
             if km_taller is None:
                 status = "SIN KM_RECEPCION"
+            if fecha and fecha_inicio_dispositivo and fecha < fecha_inicio_dispositivo:
+                status = "FECHA_ANTES_INICIO_DISPOSITIVO"
+                obs.append(
+                    f"Fecha recepcion anterior al inicio del dispositivo: {fecha_inicio_dispositivo.astimezone(EC_TZ).strftime('%d/%m/%Y')}"
+                )
             report = reports_by_key.get((device_id, fecha)) or {}
             if report.get("error"):
                 obs.append(report["error"])
@@ -515,6 +534,7 @@ def main():
     for index, row in enumerate(rows):
         device_id = row["_id_flespi"]
         fecha = row["_fecha"]
+        fecha_inicio_dispositivo = row["_fecha_inicio_dispositivo"]
         km_taller = row["_km_base_taller"]
         entry = intervals_by_id.get(device_id) or {}
         obs = []
@@ -525,6 +545,11 @@ def main():
             status = "SIN FECHA"
         if km_taller is None:
             status = "SIN KM_RECEPCION"
+        if fecha and fecha_inicio_dispositivo and fecha < fecha_inicio_dispositivo:
+            status = "FECHA_ANTES_INICIO_DISPOSITIVO"
+            obs.append(
+                f"Fecha recepcion anterior al inicio del dispositivo: {fecha_inicio_dispositivo.astimezone(EC_TZ).strftime('%d/%m/%Y')}"
+            )
         if entry.get("error"):
             obs.append(entry["error"])
 
@@ -593,9 +618,21 @@ def main():
         obs = entry["obs"]
         km_recorrido = entry["km_recorrido"]
         origen = entry["origen"]
+        km_flespi_actual = current_by_id.get(row["_id_flespi"], {}).get("km")
+
+        if (
+            status == "OK"
+            and km_recorrido is not None
+            and km_flespi_actual is not None
+            and km_recorrido > km_flespi_actual
+        ):
+            status = "RECORRIDO_MAYOR_QUE_ODOMETRO_ACTUAL"
+            obs.append(
+                "Recorrido acumulado mayor que el odometro actual; revisar fecha, reasignacion o reinicio del dispositivo"
+            )
 
         km_estimado = None
-        if km_recorrido is not None and km_taller is not None:
+        if status == "OK" and km_recorrido is not None and km_taller is not None:
             if km_recorrido < -1:
                 status = "KM_REVISAR"
                 obs.append(f"Distancia negativa segun {origen}")
@@ -603,7 +640,6 @@ def main():
         elif status == "OK":
             status = "SIN_DATOS_CALC"
 
-        km_flespi_actual = current_by_id.get(row["_id_flespi"], {}).get("km")
         km_flespi_recepcion = km_flespi_en_fecha_base(km_flespi_actual, km_recorrido)
         diferencia = km_estimado - km_flespi_actual if km_estimado is not None and km_flespi_actual is not None else None
         difference_status = classify_difference(diferencia, difference_limit)
