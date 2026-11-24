@@ -19,7 +19,7 @@ EC_TZ = ZoneInfo("America/Guayaquil")
 FIELDS = "timestamp,vehicle.mileage"
 INPUT_FILE = Path("MANTENIMIENTO.xlsx")
 OUTPUT_FILE = Path("MANTENIMIENTO_KM_ACTUAL.xlsx")
-# El kilometraje base corresponde al registro de recepción del vehículo.
+# El kilometraje base corresponde al registro de recepciÃ³n del vehÃ­culo.
 # No se usa KM_MANTENIMIENTO para evitar mezclar valores de la orden.
 KM_BASE_COLUMNS = ("KM_RECEPCION",)
 MAX_WORKERS = 18
@@ -29,6 +29,7 @@ BASE_LOOKAHEAD_DAYS = 14
 DEFAULT_CALC_ID = 1931826
 CALC_COUNTER = "distancia_en_movimiento"
 DEFAULT_REASONABLE_DIFFERENCE_KM = 500
+MAX_REASONABLE_DAILY_KM = 1000
 
 
 HTTP = requests.Session()
@@ -132,7 +133,7 @@ def classify_difference(value, limit):
 
 
 def km_flespi_en_fecha_base(km_actual, km_recorrido):
-    """Estima el odómetro Flespi en la fecha base restando el recorrido posterior."""
+    """Estima el odÃ³metro Flespi en la fecha base restando el recorrido posterior."""
     if km_actual is None or km_recorrido is None:
         return None
     resultado = km_actual - max(0, km_recorrido)
@@ -274,8 +275,13 @@ def km_recorrido_from_intervals(intervals, fecha_base, ahora, counter=CALC_COUNT
     return total if found else None
 
 
-def fetch_daily_mileage(key, ahora, token):
-    """Suma mileage() en intervalos diarios, usando la configuracion del reporte Flespi."""
+def fetch_filtered_odometer(key, ahora, token):
+    """Calcula recorrido con vehicle.mileage y elimina saltos/reinicios.
+
+    Se solicitan solo la primera y la ultima lectura de cada dia. Despues se
+    suman incrementos consecutivos razonables; un salto muy alto o negativo se
+    excluye y se establece una nueva base para conservar el recorrido posterior.
+    """
     device_id, fecha = key
     if not device_id or not fecha:
         return {"km": None, "days": 0, "error": "SIN ID_FLESPI O FECHA"}
@@ -287,9 +293,15 @@ def fetch_daily_mileage(key, ahora, token):
         "counters": [
             {
                 "type": "expression",
-                "name": "distance_km",
-                "expression": "mileage()",
-                "method": "summary",
+                "name": "odometer_first",
+                "expression": "vehicle.mileage",
+                "method": "first",
+            },
+            {
+                "type": "expression",
+                "name": "odometer_last",
+                "expression": "vehicle.mileage",
+                "method": "last",
             },
         ],
     }
@@ -304,11 +316,50 @@ def fetch_daily_mileage(key, ahora, token):
         if not response.ok:
             return {"km": None, "days": 0, "error": f"HTTP {response.status_code}"}
         intervals = response.json().get("result", [])
-        distances = [number_or_none(item.get("distance_km")) for item in intervals]
-        distances = [value for value in distances if value is not None]
-        if not distances:
+        readings = []
+        for item in intervals:
+            first = number_or_none(item.get("odometer_first"))
+            last = number_or_none(item.get("odometer_last"))
+            if first is not None:
+                readings.append((number_or_none(item.get("begin")) or 0, first))
+            if last is not None:
+                readings.append((number_or_none(item.get("end")) or 0, last))
+        readings.sort(key=lambda item: item[0])
+        if not readings:
             return {"km": None, "days": 0, "error": "SIN INTERVALOS DIARIOS"}
-        return {"km": sum(distances), "days": len(distances), "error": None}
+
+        total = 0.0
+        excluded_jumps = 0
+        resets = 0
+        excluded_km = 0.0
+        previous_ts, previous_km = readings[0]
+        for current_ts, current_km in readings[1:]:
+            if current_ts <= previous_ts:
+                continue
+            delta = current_km - previous_km
+            elapsed_days = (current_ts - previous_ts) / 86400
+            # En un tramo corto se permiten hasta 250 km; para huecos largos el
+            # limite crece a razon de MAX_REASONABLE_DAILY_KM por dia.
+            allowed = MAX_REASONABLE_DAILY_KM * max(0.25, elapsed_days)
+            if delta < -1:
+                resets += 1
+            elif delta > allowed:
+                excluded_jumps += 1
+                excluded_km += delta
+            elif delta >= 0:
+                total += delta
+            previous_ts, previous_km = current_ts, current_km
+
+        return {
+            "km": total,
+            "days": len(intervals),
+            "base_km": readings[0][1],
+            "last_km": readings[-1][1],
+            "excluded_jumps": excluded_jumps,
+            "excluded_km": excluded_km,
+            "resets": resets,
+            "error": None,
+        }
     except (requests.RequestException, ValueError) as error:
         return {"km": None, "days": 0, "error": str(error)}
 
@@ -395,7 +446,10 @@ def finalize_output(headers, rows, results, ahora, output_file, method_name, dif
         elif status == "OK":
             status = "SIN_DATOS_CALC"
 
-        km_flespi_recepcion = km_flespi_en_fecha_base(km_flespi_actual, km_recorrido)
+        km_flespi_recepcion = entry.get("km_flespi_base")
+        if km_flespi_recepcion is None:
+            km_flespi_recepcion = km_flespi_en_fecha_base(km_flespi_actual, km_recorrido)
+        fecha_base = entry.get("fecha_base") or fecha
         diferencia = km_estimado - km_flespi_actual if km_estimado is not None and km_flespi_actual is not None else None
         difference_status = classify_difference(diferencia, difference_limit)
         if status == "OK" and difference_status == "REVISAR":
@@ -405,7 +459,7 @@ def finalize_output(headers, rows, results, ahora, output_file, method_name, dif
         recommended_action = "ACTUALIZAR" if status == "OK" and difference_status == "RAZONABLE" else "REVISAR"
 
         out.update({
-            "FECHA_FLESPI_BASE": fecha.strftime("%Y-%m-%d %H:%M:%S") if fecha else None,
+            "FECHA_FLESPI_BASE": fecha_base.strftime("%Y-%m-%d %H:%M:%S") if fecha_base else None,
             "KM_FLESPI_FECHA_RECEPCION": round(km_flespi_recepcion, 2) if km_flespi_recepcion is not None else None,
             "FECHA_FLESPI_ACTUAL": ahora.astimezone(EC_TZ).strftime("%Y-%m-%d %H:%M:%S"),
             "KM_RECORRIDO_FLESPI": round(km_recorrido, 2) if km_recorrido is not None else None,
@@ -464,25 +518,40 @@ def main():
     current_by_id = fetch_current_batch(ids, token)
 
     if calculation_mode == "reporte_diario":
+        # Para mantenimiento interesa el kilometraje real del vehiculo. La suma
+        # GPS mileage() puede incluir saltos de posicion y producir recorridos
+        # imposibles. Se usa la diferencia entre vehicle.mileage historico y
+        # vehicle.mileage actual, ambos provenientes del mismo odometro Flespi.
+        effective_date_by_index = {}
+        for index, row in enumerate(rows):
+            fecha = row["_fecha"]
+            fecha_inicio = row["_fecha_inicio_dispositivo"]
+            effective_date_by_index[index] = max(fecha, fecha_inicio) if fecha and fecha_inicio else fecha
+
         keys = sorted(
-            {(row["_id_flespi"], row["_fecha"]) for row in rows if row["_id_flespi"] and row["_fecha"]},
+            {
+                (row["_id_flespi"], effective_date_by_index[index])
+                for index, row in enumerate(rows)
+                if row["_id_flespi"] and effective_date_by_index[index]
+            },
             key=lambda item: (item[0], item[1].isoformat()),
         )
         reports_by_key = {}
         started = time.time()
         with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
-            futures = {executor.submit(fetch_daily_mileage, key, ahora, token): key for key in keys}
+            futures = {executor.submit(fetch_filtered_odometer, key, ahora, token): key for key in keys}
             for index, future in enumerate(as_completed(futures), start=1):
                 key = futures[future]
                 reports_by_key[key] = future.result()
                 if index % 25 == 0 or index == len(keys):
-                    print(f"Reportes diarios Flespi: {index}/{len(keys)} | {round(time.time() - started, 1)}s")
+                    print(f"Odometros filtrados Flespi: {index}/{len(keys)} | {round(time.time() - started, 1)}s")
 
         results = {}
         for index, row in enumerate(rows):
             device_id = row["_id_flespi"]
             fecha = row["_fecha"]
             fecha_inicio_dispositivo = row["_fecha_inicio_dispositivo"]
+            fecha_efectiva = effective_date_by_index[index]
             km_taller = row["_km_base_taller"]
             status = "OK"
             obs = []
@@ -493,27 +562,50 @@ def main():
             if km_taller is None:
                 status = "SIN KM_RECEPCION"
             if fecha and fecha_inicio_dispositivo and fecha < fecha_inicio_dispositivo:
-                status = "FECHA_ANTES_INICIO_DISPOSITIVO"
                 obs.append(
-                    f"Fecha recepcion anterior al inicio del dispositivo: {fecha_inicio_dispositivo.astimezone(EC_TZ).strftime('%d/%m/%Y')}"
+                    "Fecha de calculo ajustada al inicio real del dispositivo: "
+                    f"{fecha_inicio_dispositivo.astimezone(EC_TZ).strftime('%d/%m/%Y')}"
                 )
-            report = reports_by_key.get((device_id, fecha)) or {}
+            report = reports_by_key.get((device_id, fecha_efectiva)) or {}
+            current = current_by_id.get(device_id) or {}
             if report.get("error"):
                 obs.append(report["error"])
-            if report.get("days"):
-                obs.append(f"{report['days']} dias con distancia")
+            if current.get("error"):
+                obs.append(current["error"])
+
+            km_base_flespi = report.get("base_km")
+            km_actual_flespi = current.get("km")
             km_recorrido = report.get("km") if status == "OK" else None
+            if status == "OK" and km_recorrido is not None:
+                dias = max(1.0, (ahora - fecha_efectiva.astimezone(timezone.utc)).total_seconds() / 86400)
+                promedio_diario = km_recorrido / dias
+                obs.append(
+                    f"Odometro historico {km_base_flespi:.2f} km; recorrido filtrado {km_recorrido:.2f} km; "
+                    f"promedio {promedio_diario:.1f} km/dia"
+                )
+                if report.get("excluded_jumps"):
+                    obs.append(
+                        f"{report['excluded_jumps']} salto(s) alto(s) excluido(s): "
+                        f"{report.get('excluded_km', 0):.2f} km"
+                    )
+                if report.get("resets"):
+                    obs.append(f"{report['resets']} reinicio(s) o retroceso(s) de odometro excluido(s)")
+                if promedio_diario > MAX_REASONABLE_DAILY_KM:
+                    status = "SALTO_ODOMETRO_REVISAR"
+                    obs.append(f"Promedio superior a {MAX_REASONABLE_DAILY_KM} km/dia")
             if km_recorrido is None and status == "OK":
                 status = "SIN_DATOS_CALC"
             results[index] = {
                 "km_recorrido": km_recorrido,
-                "km_flespi_actual": current_by_id.get(device_id, {}).get("km"),
-                "origen": "REPORTE_DIARIO_MILEAGE" if km_recorrido is not None else None,
+                "km_flespi_actual": km_actual_flespi,
+                "km_flespi_base": km_base_flespi,
+                "fecha_base": fecha_efectiva,
+                "origen": "ODOMETRO_HISTORICO_FILTRADO" if km_recorrido is not None else None,
                 "status": status,
                 "obs": obs,
             }
 
-        finalize_output(headers, rows, results, ahora, output_file, "REPORTE_DIARIO_MILEAGE", difference_limit)
+        finalize_output(headers, rows, results, ahora, output_file, "ODOMETRO_HISTORICO_FILTRADO", difference_limit)
         return
 
     print(f"Bases historicas unicas: {len(ids)}")
