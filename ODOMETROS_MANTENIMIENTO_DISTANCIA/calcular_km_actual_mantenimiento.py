@@ -19,7 +19,7 @@ EC_TZ = ZoneInfo("America/Guayaquil")
 FIELDS = "timestamp,vehicle.mileage"
 INPUT_FILE = Path("MANTENIMIENTO.xlsx")
 OUTPUT_FILE = Path("MANTENIMIENTO_KM_ACTUAL.xlsx")
-# El kilometraje base corresponde al registro de recepciÃ³n del vehÃ­culo.
+# El kilometraje base corresponde al registro de recepción del vehículo.
 # No se usa KM_MANTENIMIENTO para evitar mezclar valores de la orden.
 KM_BASE_COLUMNS = ("KM_RECEPCION",)
 MAX_WORKERS = 18
@@ -133,7 +133,7 @@ def classify_difference(value, limit):
 
 
 def km_flespi_en_fecha_base(km_actual, km_recorrido):
-    """Estima el odÃ³metro Flespi en la fecha base restando el recorrido posterior."""
+    """Estima el odómetro Flespi en la fecha base restando el recorrido posterior."""
     if km_actual is None or km_recorrido is None:
         return None
     resultado = km_actual - max(0, km_recorrido)
@@ -772,4 +772,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
