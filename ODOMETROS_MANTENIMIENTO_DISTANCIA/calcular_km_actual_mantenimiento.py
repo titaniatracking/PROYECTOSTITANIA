@@ -131,6 +131,13 @@ def classify_difference(value, limit):
     return "RAZONABLE" if abs(value) <= limit else "REVISAR"
 
 
+def km_flespi_en_fecha_base(km_actual, km_recorrido):
+    """Estima el odómetro Flespi en la fecha base restando el recorrido posterior."""
+    if km_actual is None or km_recorrido is None:
+        return None
+    return km_actual - max(0, km_recorrido)
+
+
 def first_km_base(row, headers):
     for name in KM_BASE_COLUMNS:
         if name in headers:
@@ -308,6 +315,7 @@ def fetch_daily_mileage(key, ahora, token):
 def write_output(headers, rows, output_file=OUTPUT_FILE):
     out_headers = headers + [
         "FECHA_FLESPI_BASE",
+        "KM_FLESPI_FECHA_RECEPCION",
         "FECHA_FLESPI_ACTUAL",
         "KM_RECORRIDO_FLESPI",
         "KM_DEBERIA_ESTAR_HOY",
@@ -375,6 +383,7 @@ def finalize_output(headers, rows, results, ahora, output_file, method_name, dif
             status = "SIN_DATOS_CALC"
 
         km_flespi_actual = entry.get("km_flespi_actual")
+        km_flespi_recepcion = km_flespi_en_fecha_base(km_flespi_actual, km_recorrido)
         diferencia = km_estimado - km_flespi_actual if km_estimado is not None and km_flespi_actual is not None else None
         difference_status = classify_difference(diferencia, difference_limit)
         if status == "OK" and difference_status == "REVISAR":
@@ -385,6 +394,7 @@ def finalize_output(headers, rows, results, ahora, output_file, method_name, dif
 
         out.update({
             "FECHA_FLESPI_BASE": fecha.strftime("%Y-%m-%d %H:%M:%S") if fecha else None,
+            "KM_FLESPI_FECHA_RECEPCION": round(km_flespi_recepcion, 2) if km_flespi_recepcion is not None else None,
             "FECHA_FLESPI_ACTUAL": ahora.astimezone(EC_TZ).strftime("%Y-%m-%d %H:%M:%S"),
             "KM_RECORRIDO_FLESPI": round(km_recorrido, 2) if km_recorrido is not None else None,
             "KM_DEBERIA_ESTAR_HOY": round(km_estimado, 2) if km_estimado is not None else None,
@@ -594,6 +604,7 @@ def main():
             status = "SIN_DATOS_CALC"
 
         km_flespi_actual = current_by_id.get(row["_id_flespi"], {}).get("km")
+        km_flespi_recepcion = km_flespi_en_fecha_base(km_flespi_actual, km_recorrido)
         diferencia = km_estimado - km_flespi_actual if km_estimado is not None and km_flespi_actual is not None else None
         difference_status = classify_difference(diferencia, difference_limit)
         if status == "OK" and difference_status == "REVISAR":
@@ -604,6 +615,7 @@ def main():
 
         out.update({
             "FECHA_FLESPI_BASE": fecha.strftime("%Y-%m-%d %H:%M:%S") if fecha else None,
+            "KM_FLESPI_FECHA_RECEPCION": round(km_flespi_recepcion, 2) if km_flespi_recepcion is not None else None,
             "FECHA_FLESPI_ACTUAL": ahora.astimezone(EC_TZ).strftime("%Y-%m-%d %H:%M:%S"),
             "KM_RECORRIDO_FLESPI": round(km_recorrido, 2) if km_recorrido is not None else None,
             "KM_DEBERIA_ESTAR_HOY": round(km_estimado, 2) if km_estimado is not None else None,
