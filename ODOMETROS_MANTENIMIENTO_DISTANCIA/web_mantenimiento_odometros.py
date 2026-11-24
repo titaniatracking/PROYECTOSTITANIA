@@ -426,7 +426,7 @@ PAGE = """
       </div>
       <div class="tableWrap">
         <table>
-          <thead><tr><th></th><th>Accion</th><th>Placa</th><th>Chasis</th><th>KM base</th><th>KM calculado</th><th>KM_FLESPI_ACTUAL</th><th>Diferencia</th><th>Estado diferencia</th><th>Estado calculo</th><th>Mensaje</th></tr></thead>
+          <thead><tr><th></th><th>Accion</th><th>Placa</th><th>Chasis</th><th>KM recepción</th><th>KM Flespi en recepción</th><th>KM calculado hoy</th><th>KM_FLESPI_ACTUAL</th><th>Diferencia</th><th>Estado diferencia</th><th>Estado calculo</th><th>Mensaje</th></tr></thead>
           <tbody id="resultRows"></tbody>
         </table>
       </div>
@@ -692,7 +692,7 @@ PAGE = """
           <td><input type="checkbox" data-result-index="${item.index}" ${selectedResults.has(item.index) ? "checked" : ""} ${item.can_update ? "" : "disabled"}></td>
           <td><span class="badge ${item.can_update ? "update" : "review"}">${item.action}</span></td>
           <td>${escapeHtml(item.plate)}</td><td>${escapeHtml(item.chassis)}</td>
-          <td>${escapeHtml(item.km_base)}</td><td>${escapeHtml(item.km_estimated)}</td><td>${escapeHtml(item.km_applied)}</td><td>${escapeHtml(item.km_difference)}</td>
+          <td>${escapeHtml(item.km_base)}</td><td>${escapeHtml(item.km_flespi_reception)}</td><td>${escapeHtml(item.km_estimated)}</td><td>${escapeHtml(item.km_applied)}</td><td>${escapeHtml(item.km_difference)}</td>
           <td><span class="badge ${item.difference_status === "RAZONABLE" ? "update" : "review"}">${escapeHtml(item.difference_status)}</span></td>
           <td>${escapeHtml(item.status)}</td><td>${escapeHtml(item.message)}</td>
         </tr>`).join("");
@@ -1275,6 +1275,7 @@ def job_results(job_id):
             "plate": str(row.get("PLACA") or ""),
             "chassis": str(row.get("CHASIS") or ""),
             "km_base": first_km_base(row, headers),
+            "km_flespi_reception": parse_float(row.get("KM_FLESPI_FECHA_RECEPCION")),
             "km_estimated": estimated,
             "km_applied": applied,
             "km_difference": difference,
