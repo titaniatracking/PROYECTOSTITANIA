@@ -49,6 +49,7 @@ def resolve_devices_by_chassis(chassis_values):
     sql = f"""
       SELECT * FROM (
         SELECT UPPER(TRIM(v.chasis)) chasis_key, v.plate AS placa, v.model AS modelo, d.imei, d.flespi_device_id,
+          vd.installation_date AS fecha_instalacion_dispositivo, vd.start_date AS fecha_inicio_dispositivo,
           ROW_NUMBER() OVER (
             PARTITION BY UPPER(TRIM(v.chasis))
             ORDER BY (vd.deleted_at IS NULL) DESC,
@@ -96,7 +97,7 @@ def enrich_workbook_by_chassis(input_path, output_path):
     if "CHASIS" not in headers:
         return input_path, {"resolved": 0, "unresolved": 0, "message": "El archivo no tiene columna CHASIS."}
 
-    device_fields = ["ID_FLESPI", "IMEI", "PLACA", "MODELO", "ESTADO_BUSQUEDA_CHASIS"]
+    device_fields = ["ID_FLESPI", "IMEI", "PLACA", "MODELO", "ESTADO_BUSQUEDA_CHASIS", "FECHA_INSTALACION_DISPOSITIVO", "FECHA_INICIO_DISPOSITIVO"]
     enriched_headers = [*headers, *[field for field in device_fields if field not in headers]]
     devices = resolve_devices_by_chassis([row.get("CHASIS") for row in rows])
     resolved = 0
@@ -109,6 +110,8 @@ def enrich_workbook_by_chassis(input_path, output_path):
             row["IMEI"] = row.get("IMEI") or device.get("imei")
             row["PLACA"] = row.get("PLACA") or device.get("placa")
             row["MODELO"] = row.get("MODELO") or device.get("modelo")
+            row["FECHA_INSTALACION_DISPOSITIVO"] = row.get("FECHA_INSTALACION_DISPOSITIVO") or device.get("fecha_instalacion_dispositivo")
+            row["FECHA_INICIO_DISPOSITIVO"] = row.get("FECHA_INICIO_DISPOSITIVO") or device.get("fecha_inicio_dispositivo")
             row["ESTADO_BUSQUEDA_CHASIS"] = "ENCONTRADO"
         else:
             unresolved += 1
@@ -1026,6 +1029,7 @@ def validate_workbook(path):
         row_errors = []
         device_id = str(row.get("ID_FLESPI") or "").strip()
         fecha = parse_date(row.get("FECHA_RECEPCION"))
+        fecha_inicio_dispositivo = parse_date(row.get("FECHA_INICIO_DISPOSITIVO"))
         km_value = first_km_base(row, headers) if km_base_columns else None
 
         if not device_id:
@@ -1039,6 +1043,10 @@ def validate_workbook(path):
             row_errors.append("FECHA_RECEPCION invalida")
         elif fecha.date() > today:
             row_errors.append("FECHA_RECEPCION no puede estar en el futuro")
+        elif fecha_inicio_dispositivo and fecha < fecha_inicio_dispositivo:
+            row_errors.append(
+                f"FECHA_RECEPCION anterior al inicio del dispositivo ({fecha_inicio_dispositivo.strftime('%d/%m/%Y')})"
+            )
 
         if km_base_columns and km_value is None:
             row_errors.append("KM_RECEPCION invalido")
