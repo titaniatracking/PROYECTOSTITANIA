@@ -29,7 +29,7 @@ BASE_LOOKAHEAD_DAYS = 14
 DEFAULT_CALC_ID = 1931826
 CALC_COUNTER = "distancia_en_movimiento"
 DEFAULT_REASONABLE_DIFFERENCE_KM = 500
-MAX_REASONABLE_DAILY_KM = 1000
+MAX_REASONABLE_DAILY_KM = 800
 HIGH_ANNUAL_KM = 30000
 VERY_HIGH_ANNUAL_KM = 50000
 
@@ -305,6 +305,12 @@ def fetch_filtered_odometer(key, ahora, token):
                 "expression": "vehicle.mileage",
                 "method": "last",
             },
+            {
+                "type": "expression",
+                "name": "gps_km",
+                "expression": "mileage()",
+                "method": "summary",
+            },
         ],
     }
     url = f"https://flespi.io/gw/devices/{device_id}/messages/calculate"
@@ -319,38 +325,41 @@ def fetch_filtered_odometer(key, ahora, token):
             return {"km": None, "days": 0, "error": f"HTTP {response.status_code}"}
         intervals = response.json().get("result", [])
         readings = []
+        total = 0.0
+        excluded_jumps = 0
+        gps_jumps = 0
+        gps_fallback_days = 0
+        matched_days = 0
+        resets = 0
+        excluded_km = 0.0
         for item in intervals:
             first = number_or_none(item.get("odometer_first"))
             last = number_or_none(item.get("odometer_last"))
+            gps_km = number_or_none(item.get("gps_km"))
             if first is not None:
                 readings.append((number_or_none(item.get("begin")) or 0, first))
             if last is not None:
                 readings.append((number_or_none(item.get("end")) or 0, last))
+            odo_delta = last - first if first is not None and last is not None else None
+            odo_valid = odo_delta is not None and 0 <= odo_delta <= MAX_REASONABLE_DAILY_KM
+            gps_valid = gps_km is not None and 0 <= gps_km <= MAX_REASONABLE_DAILY_KM
+            if odo_delta is not None and odo_delta < -1:
+                resets += 1
+            elif odo_delta is not None and odo_delta > MAX_REASONABLE_DAILY_KM:
+                excluded_jumps += 1
+                excluded_km += odo_delta
+            if gps_km is not None and gps_km > MAX_REASONABLE_DAILY_KM:
+                gps_jumps += 1
+            if odo_valid:
+                total += odo_delta
+                if gps_valid and odo_delta > 5 and 0.65 <= gps_km / odo_delta <= 1.35:
+                    matched_days += 1
+            elif gps_valid:
+                total += gps_km
+                gps_fallback_days += 1
         readings.sort(key=lambda item: item[0])
         if not readings:
             return {"km": None, "days": 0, "error": "SIN INTERVALOS DIARIOS"}
-
-        total = 0.0
-        excluded_jumps = 0
-        resets = 0
-        excluded_km = 0.0
-        previous_ts, previous_km = readings[0]
-        for current_ts, current_km in readings[1:]:
-            if current_ts <= previous_ts:
-                continue
-            delta = current_km - previous_km
-            elapsed_days = (current_ts - previous_ts) / 86400
-            # En un tramo corto se permiten hasta 250 km; para huecos largos el
-            # limite crece a razon de MAX_REASONABLE_DAILY_KM por dia.
-            allowed = MAX_REASONABLE_DAILY_KM * max(0.25, elapsed_days)
-            if delta < -1:
-                resets += 1
-            elif delta > allowed:
-                excluded_jumps += 1
-                excluded_km += delta
-            elif delta >= 0:
-                total += delta
-            previous_ts, previous_km = current_ts, current_km
 
         return {
             "km": total,
@@ -359,6 +368,9 @@ def fetch_filtered_odometer(key, ahora, token):
             "last_km": readings[-1][1],
             "excluded_jumps": excluded_jumps,
             "excluded_km": excluded_km,
+            "gps_jumps": gps_jumps,
+            "gps_fallback_days": gps_fallback_days,
+            "matched_days": matched_days,
             "resets": resets,
             "error": None,
         }
@@ -621,6 +633,12 @@ def main():
                     )
                 if report.get("resets"):
                     obs.append(f"{report['resets']} reinicio(s) o retroceso(s) de odometro excluido(s)")
+                if report.get("gps_jumps"):
+                    obs.append(f"{report['gps_jumps']} dia(s) con salto GPS excluido(s)")
+                if report.get("gps_fallback_days"):
+                    obs.append(f"{report['gps_fallback_days']} dia(s) reconstruido(s) con distancia GPS valida")
+                if report.get("matched_days"):
+                    obs.append(f"{report['matched_days']} dia(s) validados por coincidencia odometro/GPS")
                 if promedio_diario > MAX_REASONABLE_DAILY_KM:
                     status = "SALTO_ODOMETRO_REVISAR"
                     obs.append(f"Promedio superior a {MAX_REASONABLE_DAILY_KM} km/dia")
