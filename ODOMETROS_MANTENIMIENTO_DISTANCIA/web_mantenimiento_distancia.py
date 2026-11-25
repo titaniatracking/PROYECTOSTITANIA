@@ -94,25 +94,25 @@ def write_workbook(headers, rows, output_path, sheet_name="MANTENIMIENTO"):
 
 def ensure_distance_template():
     template_path = APP_DIR / TEMPLATE_NAME
-    if template_path.exists():
-        return template_path
     workbook = xlsxwriter.Workbook(str(template_path))
     worksheet = workbook.add_worksheet("DISTANCIA")
     header = workbook.add_format({"bold": True, "font_color": "#FFFFFF", "bg_color": "#0F766E", "border": 1})
     date_format = workbook.add_format({"num_format": "dd/mm/yyyy", "border": 1})
     number_format = workbook.add_format({"num_format": "#,##0.00", "border": 1})
     text_format = workbook.add_format({"border": 1})
-    headers = ["CHASIS", "FECHA_MANTENIMIENTO", "KM_MANTENIMIENTO"]
+    headers = ["CHASIS", "PLACA", "FECHA_MANTENIMIENTO", "KM_MANTENIMIENTO"]
     for column, name in enumerate(headers):
         worksheet.write(0, column, name, header)
     worksheet.write(1, 0, "8AJKB3CD4T1721311", text_format)
-    worksheet.write_datetime(1, 1, datetime(2026, 1, 15), date_format)
-    worksheet.write_number(1, 2, 1000, number_format)
+    worksheet.write(1, 1, "PFQ2127", text_format)
+    worksheet.write_datetime(1, 2, datetime(2026, 1, 15), date_format)
+    worksheet.write_number(1, 3, 1000, number_format)
     worksheet.freeze_panes(1, 0)
-    worksheet.autofilter(0, 0, 1, 2)
+    worksheet.autofilter(0, 0, 1, 3)
     worksheet.set_column("A:A", 25)
-    worksheet.set_column("B:B", 23)
-    worksheet.set_column("C:C", 22)
+    worksheet.set_column("B:B", 16)
+    worksheet.set_column("C:C", 23)
+    worksheet.set_column("D:D", 22)
     workbook.close()
     return template_path
 
@@ -485,7 +485,7 @@ PAGE = """
       </div>
       <div class="tableWrap">
         <table>
-          <thead><tr><th></th><th>Accion</th><th>Placa</th><th>Chasis</th><th>KM base</th><th>KM calculado</th><th>KM_FLESPI_ACTUAL</th><th>Diferencia</th><th>Estado diferencia</th><th>Estado calculo</th><th>Mensaje</th></tr></thead>
+          <thead><tr><th></th><th>Accion</th><th>Placa</th><th>Chasis</th><th>KM base</th><th>KM calculado</th><th>Promedio diario</th><th>KM_FLESPI_ACTUAL</th><th>Diferencia</th><th>Estado diferencia</th><th>Estado calculo</th><th>Mensaje</th></tr></thead>
           <tbody id="resultRows"></tbody>
         </table>
       </div>
@@ -748,7 +748,7 @@ PAGE = """
           <td><input type="checkbox" data-result-index="${item.index}" ${selectedResults.has(item.index) ? "checked" : ""} ${item.can_update ? "" : "disabled"}></td>
           <td><span class="badge ${item.can_update ? "update" : "review"}">${item.action}</span></td>
           <td>${escapeHtml(item.plate)}</td><td>${escapeHtml(item.chassis)}</td>
-          <td>${escapeHtml(item.km_base)}</td><td>${escapeHtml(item.km_estimated)}</td><td>${escapeHtml(item.km_applied)}</td><td>${escapeHtml(item.km_difference)}</td>
+          <td>${escapeHtml(item.km_base)}</td><td>${escapeHtml(item.km_estimated)}</td><td>${escapeHtml(item.km_daily_average)}</td><td>${escapeHtml(item.km_applied)}</td><td>${escapeHtml(item.km_difference)}</td>
           <td><span class="badge ${item.difference_status === "RAZONABLE" ? "update" : "review"}">${escapeHtml(item.difference_status)}</span></td>
           <td>${escapeHtml(item.status)}</td><td>${escapeHtml(item.message)}</td>
         </tr>`).join("");
@@ -1324,6 +1324,7 @@ def job_results(job_id):
     for index, row in enumerate(rows):
         action = str(row.get("ACCION_RECOMENDADA") or "REVISAR")
         estimated = parse_float(row.get("KM_ACTUAL_ESTIMADO"))
+        daily_average = parse_float(row.get("KM_PROMEDIO_DIARIO"))
         applied = parse_float(row.get("KM_FLESPI_ACTUAL"))
         difference = parse_float(row.get("DIFERENCIA_KM"))
         update_marker = str(row.get("ODOMETRO_ACTUALIZADO") or "").strip().upper()
@@ -1338,6 +1339,7 @@ def job_results(job_id):
             "chassis": str(row.get("CHASIS") or ""),
             "km_base": first_km_base(row, headers),
             "km_estimated": estimated,
+            "km_daily_average": daily_average,
             "km_applied": applied,
             "km_difference": difference,
             "difference_status": str(row.get("ESTADO_DIFERENCIA") or "SIN DATOS"),
