@@ -392,6 +392,7 @@ def write_output(headers, rows, output_file=OUTPUT_FILE):
         "KM_ACTUAL_ESTIMADO",
         "KM_FLESPI_ACTUAL",
         "DIFERENCIA_KM",
+        "VALIDACION_ODOMETRO_FLESPI",
         "ESTADO_DIFERENCIA",
         "ODOMETRO_ACTUALIZADO",
         "KM_SOLICITADO_FLESPI",
@@ -494,6 +495,7 @@ def finalize_output(headers, rows, results, ahora, output_file, method_name, dif
             km_flespi_recepcion = km_flespi_en_fecha_base(km_flespi_actual, km_recorrido)
         diferencia = km_estimado - km_flespi_actual if km_estimado is not None and km_flespi_actual is not None else None
         difference_status = classify_difference(diferencia, difference_limit)
+        odometer_validation = "CORRECTO" if difference_status == "RAZONABLE" else ("REVISAR" if diferencia is not None else "SIN DATOS")
         if status == "OK" and difference_status == "REVISAR":
             obs.append(f"Diferencia alta: {abs(diferencia):.2f} km; limite razonable: {difference_limit:.2f} km")
         elif status == "OK" and difference_status == "SIN DATOS":
@@ -513,6 +515,7 @@ def finalize_output(headers, rows, results, ahora, output_file, method_name, dif
             "KM_ACTUAL_ESTIMADO": round(km_estimado, 2) if km_estimado is not None else None,
             "KM_FLESPI_ACTUAL": round(km_flespi_actual, 2) if km_flespi_actual is not None else None,
             "DIFERENCIA_KM": round(diferencia, 2) if diferencia is not None else None,
+            "VALIDACION_ODOMETRO_FLESPI": odometer_validation,
             "ESTADO_DIFERENCIA": difference_status,
             "ODOMETRO_ACTUALIZADO": "NO",
             "KM_SOLICITADO_FLESPI": None,
@@ -572,7 +575,7 @@ def main():
         for index, row in enumerate(rows):
             fecha = row["_fecha"]
             fecha_inicio = row["_fecha_inicio_dispositivo"]
-            effective_date_by_index[index] = max(fecha, fecha_inicio) if fecha and fecha_inicio else fecha
+            effective_date_by_index[index] = max(fecha, fecha_inicio) if fecha and fecha_inicio else (fecha or fecha_inicio)
 
         keys = sorted(
             {
@@ -603,10 +606,10 @@ def main():
             obs = []
             if not device_id:
                 status = "SIN ID_FLESPI"
-            if not fecha:
+            if not fecha_efectiva:
                 status = "SIN FECHA"
-            if km_taller is None:
-                status = "SIN KM_RECEPCION"
+            elif not fecha or ("FECHA_MANTENIMIENTO" in headers and not parse_date(row.get("FECHA_MANTENIMIENTO"))):
+                obs.append("Sin FECHA_MANTENIMIENTO; verificacion iniciada desde la fecha real del dispositivo")
             if fecha and fecha_inicio_dispositivo and fecha < fecha_inicio_dispositivo:
                 obs.append(
                     "Fecha de calculo ajustada al inicio real del dispositivo: "
@@ -621,6 +624,12 @@ def main():
 
             km_base_flespi = report.get("base_km")
             km_actual_flespi = current.get("km")
+            if km_taller is None and km_base_flespi is not None:
+                km_taller = km_base_flespi
+                row["_km_base_taller"] = km_base_flespi
+                obs.append("Sin KM_MANTENIMIENTO; se usa la primera lectura historica Flespi como base de verificacion")
+            elif km_taller is None and status == "OK":
+                status = "SIN KM BASE FLESPI"
             km_recorrido = report.get("km") if status == "OK" else None
             if status == "OK" and km_recorrido is not None:
                 dias = max(1.0, (ahora - fecha_efectiva.astimezone(timezone.utc)).total_seconds() / 86400)
