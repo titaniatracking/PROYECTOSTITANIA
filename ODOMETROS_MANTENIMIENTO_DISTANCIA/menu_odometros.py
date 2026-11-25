@@ -18,15 +18,17 @@ PAGE = """
     .eyebrow { color:#087f5b; font-size:12px; letter-spacing:1.2px; font-weight:800; }
     h1 { font-size:36px; margin:8px 0 12px; }
     .intro { max-width:700px; color:#52677d; font-size:17px; line-height:1.5; }
-    .cards { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:20px; margin-top:34px; }
+    .cards { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:20px; margin-top:34px; }
     .card { background:white; border:1px solid var(--line); border-radius:18px; padding:26px; box-shadow:0 10px 30px rgba(26,68,105,.08); }
     .icon { width:48px; height:48px; display:grid; place-items:center; border-radius:14px; color:white; font-weight:800; font-size:20px; background:var(--blue); }
     .distance .icon { background:var(--green); }
+    .real .icon { background:#7c3aed; }
     h2 { margin:18px 0 8px; font-size:22px; }
     p { color:#52677d; line-height:1.5; min-height:72px; }
     ul { padding-left:19px; color:#344b61; line-height:1.7; font-size:14px; }
     a { display:inline-flex; margin-top:18px; text-decoration:none; color:white; background:var(--blue); padding:12px 16px; border-radius:9px; font-weight:700; }
     .distance a { background:var(--green); }
+    .real a { background:#7c3aed; }
     .note { margin-top:25px; padding:14px 16px; background:#fff; border:1px solid var(--line); border-radius:10px; color:#52677d; font-size:14px; }
     .sidebar { position:fixed; inset:0 auto 0 0; width:248px; padding:24px 16px; background:#0f2742; color:white; display:flex; flex-direction:column; z-index:10; box-shadow:10px 0 30px rgba(15,39,66,.12); }
     .brand { padding:4px 10px 22px; border-bottom:1px solid rgba(255,255,255,.14); }
@@ -62,6 +64,7 @@ PAGE = """
       <a class="active" href="http://127.0.0.1:8062"><span class="navIcon">⌂</span><span>Inicio</span></a>
       <a href="http://127.0.0.1:8060"><span class="navIcon">RC</span><span>Recepción</span></a>
       <a href="http://127.0.0.1:8061"><span class="navIcon">DT</span><span>Distancia</span></a>
+      <a href="http://127.0.0.1:8063"><span class="navIcon">OR</span><span>Odómetro real</span></a>
     </nav>
     <div class="sidebarFoot">Centro de navegación<br><b style="color:white">Gestión de odómetros</b></div>
   </aside>
@@ -84,6 +87,13 @@ PAGE = """
         <ul><li>Campos: CHASIS, FECHA_MANTENIMIENTO y KM_MANTENIMIENTO</li><li>Sin calculadora Flespi</li><li>Enlace local: puerto 8061</li></ul>
         <a href="http://127.0.0.1:8061">Abrir módulo por distancia</a>
       </article>
+      <article class="card real">
+        <div class="icon">03</div>
+        <h2>Odómetro real aproximado</h2>
+        <p>Análisis masivo de chasis para reconstruir el odómetro desde la creación y eliminar saltos anormales.</p>
+        <ul><li>Entrada: CHASIS y KM_INICIAL opcional</li><li>Compara aproximado contra actual</li><li>Enlace local: puerto 8063</li></ul>
+        <a href="http://127.0.0.1:8063">Abrir odómetro real</a>
+      </article>
     </section>
     <div class="note">El módulo por distancia busca IMEI e ID Flespi por CHASIS y entrega la columna KM_DEBERIA_ESTAR_HOY.</div>
   </main>
@@ -99,4 +109,3 @@ def index():
 
 if __name__ == "__main__":
     app.run(host="127.0.0.1", port=8062, debug=False)
-
