@@ -128,6 +128,7 @@ def enrich_workbook_by_chassis(input_path, output_path):
         "ID_FLESPI", "IMEI", "PLACA", "MODELO", "ANIO_VEHICULO",
         "ESTADO_BUSQUEDA_CHASIS", "FECHA_RECEPCION", "KM_RECEPCION",
         "FECHA_INSTALACION_DISPOSITIVO", "FECHA_INICIO_DISPOSITIVO",
+        "TIPO_ANALISIS",
     ]
     enriched_headers = [*headers, *[field for field in device_fields if field not in headers]]
     devices = resolve_devices_by_chassis([row.get("CHASIS") for row in rows])
@@ -148,6 +149,13 @@ def enrich_workbook_by_chassis(input_path, output_path):
             row["ANIO_VEHICULO"] = row.get("ANIO_VEHICULO") or device.get("anio_vehiculo")
             row["FECHA_INSTALACION_DISPOSITIVO"] = row.get("FECHA_INSTALACION_DISPOSITIVO") or device.get("fecha_instalacion_dispositivo")
             row["FECHA_INICIO_DISPOSITIVO"] = row.get("FECHA_INICIO_DISPOSITIVO") or device.get("fecha_inicio_dispositivo")
+            if not row.get("FECHA_RECEPCION"):
+                row["FECHA_RECEPCION"] = row.get("FECHA_INICIO_DISPOSITIVO") or row.get("FECHA_INSTALACION_DISPOSITIVO")
+            row["TIPO_ANALISIS"] = (
+                "DESDE MANTENIMIENTO"
+                if row.get("FECHA_MANTENIMIENTO") not in (None, "") and row.get("KM_MANTENIMIENTO") not in (None, "")
+                else "VERIFICACION FLESPI SIN MANTENIMIENTO"
+            )
             row["ESTADO_BUSQUEDA_CHASIS"] = "ENCONTRADO"
         else:
             unresolved += 1
@@ -485,7 +493,7 @@ PAGE = """
       </div>
       <div class="tableWrap">
         <table>
-          <thead><tr><th></th><th>Accion</th><th>Placa</th><th>Chasis</th><th>KM base</th><th>KM calculado</th><th>Promedio diario</th><th>KM_FLESPI_ACTUAL</th><th>Diferencia</th><th>Estado diferencia</th><th>Estado calculo</th><th>Mensaje</th></tr></thead>
+          <thead><tr><th></th><th>Accion</th><th>Placa</th><th>Chasis</th><th>KM base</th><th>KM calculado</th><th>Promedio diario</th><th>KM_FLESPI_ACTUAL</th><th>Diferencia</th><th>Validación Flespi</th><th>Estado calculo</th><th>Mensaje</th></tr></thead>
           <tbody id="resultRows"></tbody>
         </table>
       </div>
@@ -749,7 +757,7 @@ PAGE = """
           <td><span class="badge ${item.can_update ? "update" : "review"}">${item.action}</span></td>
           <td>${escapeHtml(item.plate)}</td><td>${escapeHtml(item.chassis)}</td>
           <td>${escapeHtml(item.km_base)}</td><td>${escapeHtml(item.km_estimated)}</td><td>${escapeHtml(item.km_daily_average)}</td><td>${escapeHtml(item.km_applied)}</td><td>${escapeHtml(item.km_difference)}</td>
-          <td><span class="badge ${item.difference_status === "RAZONABLE" ? "update" : "review"}">${escapeHtml(item.difference_status)}</span></td>
+          <td><span class="badge ${item.odometer_validation === "CORRECTO" ? "update" : "review"}">${escapeHtml(item.odometer_validation)}</span></td>
           <td>${escapeHtml(item.status)}</td><td>${escapeHtml(item.message)}</td>
         </tr>`).join("");
       resultRows.querySelectorAll("input[type=checkbox]").forEach(box => box.addEventListener("change", () => {
@@ -1080,8 +1088,11 @@ def validate_workbook(path):
 
     for index, row in enumerate(rows, start=2):
         row_errors = []
+        row_notes = []
         device_id = str(row.get("ID_FLESPI") or "").strip()
         fecha = parse_date(row.get("FECHA_RECEPCION"))
+        fecha_mantenimiento = parse_date(row.get("FECHA_MANTENIMIENTO"))
+        km_mantenimiento = parse_float(row.get("KM_MANTENIMIENTO"))
         km_value = first_km_base(row, headers) if km_base_columns else None
 
         if not device_id:
@@ -1091,13 +1102,19 @@ def validate_workbook(path):
         else:
             ids.append(device_id)
 
-        if not fecha:
+        if row.get("FECHA_MANTENIMIENTO") not in (None, "") and not fecha_mantenimiento:
             row_errors.append("FECHA_MANTENIMIENTO invalida")
+        elif not fecha:
+            row_errors.append("sin fecha de mantenimiento ni fecha de inicio del dispositivo")
+        elif not fecha_mantenimiento:
+            row_notes.append("sin fecha de mantenimiento: se verificara desde el inicio real del dispositivo")
         elif fecha.date() > today:
             row_errors.append("FECHA_MANTENIMIENTO no puede estar en el futuro")
 
-        if km_base_columns and km_value is None:
+        if row.get("KM_MANTENIMIENTO") not in (None, "") and km_mantenimiento is None:
             row_errors.append("KM_MANTENIMIENTO invalido")
+        elif km_base_columns and km_value is None:
+            row_notes.append("sin KM de mantenimiento: se usara la primera lectura historica Flespi")
         elif km_value is not None and km_value < 0:
             row_errors.append("KM_MANTENIMIENTO no puede ser negativo")
 
@@ -1109,12 +1126,17 @@ def validate_workbook(path):
         else:
             valid_rows += 1
 
+        verification_only = bool(row_notes)
         row_options.append({
             "index": index - 2,
             "excel_row": index,
             "can_update": not row_errors and not fatal_errors,
-            "action": "ACTUALIZAR" if not row_errors and not fatal_errors else "REVISAR",
-            "message": "Lista para calcular" if not row_errors and not fatal_errors else ", ".join(row_errors or fatal_errors),
+            "action": ("ANALIZAR" if verification_only else "ACTUALIZAR") if not row_errors and not fatal_errors else "REVISAR",
+            "message": (
+                "; ".join(["Lista para verificar Flespi", *row_notes])
+                if not row_errors and not fatal_errors and verification_only
+                else ("Lista para calcular" if not row_errors and not fatal_errors else ", ".join(row_errors or fatal_errors))
+            ),
             "plate": str(row.get("PLACA") or ""),
             "chassis": str(row.get("CHASIS") or ""),
             "model": str(row.get("MODELO") or ""),
@@ -1327,6 +1349,7 @@ def job_results(job_id):
         daily_average = parse_float(row.get("KM_PROMEDIO_DIARIO"))
         applied = parse_float(row.get("KM_FLESPI_ACTUAL"))
         difference = parse_float(row.get("DIFERENCIA_KM"))
+        odometer_validation = str(row.get("VALIDACION_ODOMETRO_FLESPI") or "SIN DATOS")
         update_marker = str(row.get("ODOMETRO_ACTUALIZADO") or "").strip().upper()
         was_updated = update_marker in {"SI", "PENDIENTE"}
         calculation_status = str(row.get("ESTADO_CALCULO") or "")
@@ -1342,6 +1365,7 @@ def job_results(job_id):
             "km_daily_average": daily_average,
             "km_applied": applied,
             "km_difference": difference,
+            "odometer_validation": odometer_validation,
             "difference_status": str(row.get("ESTADO_DIFERENCIA") or "SIN DATOS"),
             "applied": was_updated,
             "status": calculation_status,
