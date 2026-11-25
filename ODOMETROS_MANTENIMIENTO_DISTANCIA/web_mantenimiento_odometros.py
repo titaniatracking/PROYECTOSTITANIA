@@ -354,6 +354,7 @@ PAGE = """
       <a href="http://127.0.0.1:8062"><span class="navIcon">⌂</span><span>Inicio</span></a>
       <a class="active" href="http://127.0.0.1:8060"><span class="navIcon">RC</span><span>Recepción</span></a>
       <a href="http://127.0.0.1:8061"><span class="navIcon">DT</span><span>Distancia</span></a>
+      <a href="http://127.0.0.1:8063"><span class="navIcon">OR</span><span>Odómetro real</span></a>
     </nav>
     <div class="sidebarFoot">Módulo activo<br><b style="color:white">Mantenimiento por recepción</b></div>
   </aside>
