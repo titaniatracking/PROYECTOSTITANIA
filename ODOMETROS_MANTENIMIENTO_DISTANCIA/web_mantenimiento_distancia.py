@@ -23,6 +23,7 @@ APP_DIR = Path(__file__).resolve().parent
 JOBS_DIR = APP_DIR / "web_jobs_mantenimiento_distancia"
 CALC_SCRIPT = APP_DIR / "calcular_km_actual_mantenimiento.py"
 OUTPUT_NAME = "MANTENIMIENTO_DISTANCIA_HOY.xlsx"
+TEMPLATE_NAME = "PLANTILLA_MANTENIMIENTO_DISTANCIA.xlsx"
 ALLOWED_EXTENSIONS = {".xlsx"}
 
 app = Flask(__name__)
@@ -47,7 +48,10 @@ def resolve_devices_by_chassis(chassis_values):
     placeholders = ",".join(["%s"] * len(chassis))
     sql = f"""
       SELECT * FROM (
-        SELECT UPPER(TRIM(v.chasis)) chasis_key, v.plate AS placa, v.model AS modelo, d.imei, d.flespi_device_id,
+        SELECT UPPER(TRIM(v.chasis)) chasis_key, v.plate AS placa, v.model AS modelo, v.year AS anio_vehiculo,
+          d.imei, d.flespi_device_id,
+          vd.installation_date AS fecha_instalacion_dispositivo,
+          vd.start_date AS fecha_inicio_dispositivo,
           ROW_NUMBER() OVER (
             PARTITION BY UPPER(TRIM(v.chasis))
             ORDER BY (vd.deleted_at IS NULL) DESC,
@@ -88,6 +92,31 @@ def write_workbook(headers, rows, output_path, sheet_name="MANTENIMIENTO"):
     workbook.close()
 
 
+def ensure_distance_template():
+    template_path = APP_DIR / TEMPLATE_NAME
+    if template_path.exists():
+        return template_path
+    workbook = xlsxwriter.Workbook(str(template_path))
+    worksheet = workbook.add_worksheet("DISTANCIA")
+    header = workbook.add_format({"bold": True, "font_color": "#FFFFFF", "bg_color": "#0F766E", "border": 1})
+    date_format = workbook.add_format({"num_format": "dd/mm/yyyy", "border": 1})
+    number_format = workbook.add_format({"num_format": "#,##0.00", "border": 1})
+    text_format = workbook.add_format({"border": 1})
+    headers = ["CHASIS", "FECHA_MANTENIMIENTO", "KM_MANTENIMIENTO"]
+    for column, name in enumerate(headers):
+        worksheet.write(0, column, name, header)
+    worksheet.write(1, 0, "8AJKB3CD4T1721311", text_format)
+    worksheet.write_datetime(1, 1, datetime(2026, 1, 15), date_format)
+    worksheet.write_number(1, 2, 1000, number_format)
+    worksheet.freeze_panes(1, 0)
+    worksheet.autofilter(0, 0, 1, 2)
+    worksheet.set_column("A:A", 25)
+    worksheet.set_column("B:B", 23)
+    worksheet.set_column("C:C", 22)
+    workbook.close()
+    return template_path
+
+
 def enrich_workbook_by_chassis(input_path, output_path):
     """Completa ID_FLESPI, IMEI y datos del vehículo si el archivo trae CHASIS."""
     headers, rows = read_xlsx_rows(input_path)
@@ -95,7 +124,11 @@ def enrich_workbook_by_chassis(input_path, output_path):
     if "CHASIS" not in headers:
         return input_path, {"resolved": 0, "unresolved": 0, "message": "El archivo no tiene columna CHASIS."}
 
-    device_fields = ["ID_FLESPI", "IMEI", "PLACA", "MODELO", "ESTADO_BUSQUEDA_CHASIS", "FECHA_RECEPCION", "KM_RECEPCION"]
+    device_fields = [
+        "ID_FLESPI", "IMEI", "PLACA", "MODELO", "ANIO_VEHICULO",
+        "ESTADO_BUSQUEDA_CHASIS", "FECHA_RECEPCION", "KM_RECEPCION",
+        "FECHA_INSTALACION_DISPOSITIVO", "FECHA_INICIO_DISPOSITIVO",
+    ]
     enriched_headers = [*headers, *[field for field in device_fields if field not in headers]]
     devices = resolve_devices_by_chassis([row.get("CHASIS") for row in rows])
     resolved = 0
@@ -112,6 +145,9 @@ def enrich_workbook_by_chassis(input_path, output_path):
             row["IMEI"] = row.get("IMEI") or device.get("imei")
             row["PLACA"] = row.get("PLACA") or device.get("placa")
             row["MODELO"] = row.get("MODELO") or device.get("modelo")
+            row["ANIO_VEHICULO"] = row.get("ANIO_VEHICULO") or device.get("anio_vehiculo")
+            row["FECHA_INSTALACION_DISPOSITIVO"] = row.get("FECHA_INSTALACION_DISPOSITIVO") or device.get("fecha_instalacion_dispositivo")
+            row["FECHA_INICIO_DISPOSITIVO"] = row.get("FECHA_INICIO_DISPOSITIVO") or device.get("fecha_inicio_dispositivo")
             row["ESTADO_BUSQUEDA_CHASIS"] = "ENCONTRADO"
         else:
             unresolved += 1
@@ -214,7 +250,7 @@ PAGE = """
     }
     form {
       display: grid;
-      grid-template-columns: minmax(260px, 1fr) minmax(240px, auto) auto auto;
+      grid-template-columns: minmax(260px, 1fr) auto minmax(220px, auto) auto auto;
       gap: 12px;
       align-items: center;
     }
@@ -380,10 +416,10 @@ PAGE = """
 
     <section class="hero">
       <h2>Estimación por distancia diaria</h2>
-      <p>Calcula el kilometraje esperado a hoy sin usar la calculadora Flespi. El resultado parte del kilometraje registrado en el mantenimiento.</p>
+      <p>Calcula el kilometraje esperado a hoy desde la fecha del mantenimiento, usando odómetro histórico y GPS como respaldo, sin sumar saltos ni retrocesos.</p>
       <div class="flow">
         <div class="flowStep"><b>1. Carga</b><span>CHASIS, FECHA_MANTENIMIENTO y KM_MANTENIMIENTO</span></div>
-        <div class="flowStep"><b>2. Distancia diaria</b><span>Consulta mileage() desde la fecha de mantenimiento hasta hoy</span></div>
+        <div class="flowStep"><b>2. Distancia real</b><span>Compara odómetro y GPS por día; elimina saltos superiores a 800 km</span></div>
         <div class="flowStep"><b>3. Resultado</b><span>Descarga KM_DEBERIA_ESTAR_HOY o actualiza los aprobados</span></div>
       </div>
     </section>
@@ -391,12 +427,13 @@ PAGE = """
     <section class="panel">
       <form id="uploadForm">
         <input id="fileInput" name="file" type="file" accept=".xlsx" required>
+        <a class="download" href="/api/template/download">Descargar plantilla ejemplo</a>
         <span class="status">Método fijo: distancia diaria Flespi</span>
         <button id="validateButton" type="button">Validar Excel</button>
         <button id="startButton" type="submit" disabled>Analizar y generar Excel</button>
       </form>
       <div id="validationBox" class="validation"></div>
-      <p class="muted"><b>Campos requeridos:</b> CHASIS, FECHA_MANTENIMIENTO y KM_MANTENIMIENTO. El sistema encuentra el equipo por chasis, suma la distancia diaria desde la fecha de mantenimiento hasta hoy y genera KM_DEBERIA_ESTAR_HOY.</p>
+      <p class="muted"><b>Campos requeridos:</b> CHASIS, FECHA_MANTENIMIENTO y KM_MANTENIMIENTO. Se calcula desde la fecha exacta, se excluyen saltos GPS, saltos de odómetro y reinicios, y se genera KM_DEBERIA_ESTAR_HOY con trazabilidad en OBSERVACION.</p>
     </section>
 
     <section class="panel selection" id="selectionPanel">
@@ -1112,6 +1149,12 @@ def index():
     return render_template_string(PAGE)
 
 
+@app.get("/api/template/download")
+def download_template():
+    template_path = ensure_distance_template()
+    return send_file(template_path, as_attachment=True, download_name=TEMPLATE_NAME)
+
+
 @app.post("/api/validate")
 def validate_file():
     uploaded = request.files.get("file")
@@ -1370,4 +1413,5 @@ def apply_job_status(job_id):
 
 if __name__ == "__main__":
     JOBS_DIR.mkdir(parents=True, exist_ok=True)
+    ensure_distance_template()
     app.run(host="127.0.0.1", port=8061, debug=False)
