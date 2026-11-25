@@ -384,6 +384,7 @@ def write_output(headers, rows, output_file=OUTPUT_FILE):
         "KM_FLESPI_FECHA_RECEPCION",
         "FECHA_FLESPI_ACTUAL",
         "KM_RECORRIDO_FLESPI",
+        "KM_PROMEDIO_DIARIO",
         "KM_ANUAL_PROYECTADO",
         "NIVEL_USO_ANUAL",
         "VALIDACION_ANIO_VEHICULO",
@@ -456,6 +457,7 @@ def finalize_output(headers, rows, results, ahora, output_file, method_name, dif
         if fecha_base and km_recorrido is not None:
             dias_calculo = max(1.0, (ahora - fecha_base.astimezone(timezone.utc)).total_seconds() / 86400)
             km_anual_proyectado = max(0, km_recorrido) * 365 / dias_calculo
+        km_promedio_diario = max(0, km_recorrido) / dias_calculo if dias_calculo and km_recorrido is not None else None
         if km_anual_proyectado is None:
             nivel_uso = "SIN DATOS"
         elif km_anual_proyectado > VERY_HIGH_ANNUAL_KM:
@@ -503,6 +505,7 @@ def finalize_output(headers, rows, results, ahora, output_file, method_name, dif
             "KM_FLESPI_FECHA_RECEPCION": round(km_flespi_recepcion, 2) if km_flespi_recepcion is not None else None,
             "FECHA_FLESPI_ACTUAL": ahora.astimezone(EC_TZ).strftime("%Y-%m-%d %H:%M:%S"),
             "KM_RECORRIDO_FLESPI": round(km_recorrido, 2) if km_recorrido is not None else None,
+            "KM_PROMEDIO_DIARIO": round(km_promedio_diario, 2) if km_promedio_diario is not None else None,
             "KM_ANUAL_PROYECTADO": round(km_anual_proyectado, 2) if km_anual_proyectado is not None else None,
             "NIVEL_USO_ANUAL": nivel_uso,
             "VALIDACION_ANIO_VEHICULO": validacion_anio,
