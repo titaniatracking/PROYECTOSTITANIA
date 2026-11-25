@@ -119,6 +119,32 @@ def fetch_current_batch(device_ids, token):
     return result
 
 
+def fetch_settings_batch(device_ids, token):
+    result = {}
+    ids = [str(value) for value in device_ids if value]
+    headers = {"Authorization": f"FlespiToken {token}"}
+    for index in range(0, len(ids), 80):
+        chunk = ids[index:index + 80]
+        url = f"https://flespi.io/gw/devices/{','.join(chunk)}/settings/odometer_fmb"
+        try:
+            response = HTTP.get(url, headers=headers, timeout=30)
+            if not response.ok:
+                continue
+            for item in response.json().get("result", []):
+                current = item.get("current") or {}
+                pending = item.get("pending")
+                pending_properties = (pending or {}).get("properties") if isinstance(pending, dict) else None
+                result[str(item.get("device_id"))] = {
+                    "value": number(current.get("value")),
+                    "updated": number(item.get("updated")),
+                    "pending": pending_properties or pending,
+                    "status": item.get("status"),
+                }
+        except requests.RequestException:
+            continue
+    return result
+
+
 def calculate_device(device_id, start_date, now, token):
     if not device_id or not start_date:
         return {"error": "SIN ID FLESPI O FECHA EFECTIVA"}
@@ -236,6 +262,7 @@ def write_result(headers, rows, output_path):
         "KM_ODOMETRO_APROXIMADO", "KM_ODOMETRO_ACTUAL", "DIFERENCIA_APROX_VS_ACTUAL",
         "METODO_APROXIMACION",
         "COMANDO_ODOMETRO", "FECHA_ULTIMO_COMANDO", "VALOR_ULTIMO_COMANDO",
+        "ESTADO_CONFIGURACION_FLESPI", "VALOR_CONFIGURADO_FLESPI", "FECHA_CONFIGURACION_FLESPI",
         "DIAS_ANALIZADOS", "DIAS_COINCIDENCIA_GPS", "DIAS_SALTO_GPS",
         "DIAS_SALTO_ODOMETRO", "REINICIOS_DETECTADOS", "DIAS_RESPALDO_GPS",
         "CONFIANZA", "ESTADO", "OBSERVACION",
@@ -300,6 +327,7 @@ def main():
         row["_start"] = effective_start(row)
     ids = sorted({row["_device_id"] for row in rows if row["_device_id"]})
     current = fetch_current_batch(ids, token)
+    settings = fetch_settings_batch(ids, token)
     keys = sorted({(row["_device_id"], row["_start"]) for row in rows if row["_device_id"] and row["_start"]}, key=lambda value: (value[0], value[1].isoformat()))
     reports = {}
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
@@ -317,12 +345,18 @@ def main():
         report = reports.get((device_id, start), {})
         current_km = (current.get(device_id) or {}).get("km")
         command_executed = str(row.get("COMANDO_ODOMETRO_EJECUTADO") or "").strip() in {"1", "SI", "True", "true"}
+        setting = settings.get(device_id) or {}
+        setting_value = setting.get("value")
+        setting_updated = setting.get("updated")
+        setting_after_start = bool(setting_updated and start and setting_updated >= start.timestamp())
+        setting_pending = bool(setting.get("pending"))
+        flespi_confirmed = setting_value is not None and setting_after_start and not setting_pending
         initial_input = parse_float(row.get("KM_INICIAL"))
         detected_base = report.get("first_odometer")
         initial_km = initial_input if initial_input is not None else max(0, detected_base or 0)
         distance = report.get("distance")
         reconstructed = initial_km + distance if distance is not None else None
-        if command_executed and current_km is not None:
+        if (command_executed or flespi_confirmed) and current_km is not None:
             approximate = current_km
             method = "ODOMETRO CONFIGURADO POR COMANDO"
         else:
@@ -345,14 +379,33 @@ def main():
 
         if report.get("error") or approximate is None:
             status = "SIN DATOS"
-        elif command_executed:
+        elif command_executed or flespi_confirmed:
             status = "COMANDO CONFIRMADO"
         elif report.get("confidence") == "ALTA":
             status = "APROXIMADO CONFIABLE"
         else:
             status = "REVISAR APROXIMACION"
 
-        command_status = "EJECUTADO" if command_executed else "SIN EVIDENCIA"
+        if command_executed:
+            command_status = "EJECUTADO SEGUN VAPOR"
+        elif flespi_confirmed:
+            command_status = "CONFIRMADO EN FLESPI"
+        elif setting_pending:
+            command_status = "PENDIENTE EN FLESPI"
+        else:
+            command_status = "SIN EVIDENCIA"
+        if setting_pending:
+            flespi_status = "PENDIENTE"
+        elif flespi_confirmed:
+            flespi_status = "CONFIRMADO"
+        elif setting_value is not None:
+            flespi_status = "CONFIGURACION ANTERIOR A ASIGNACION"
+        else:
+            flespi_status = "SIN DATOS"
+        setting_date = (
+            datetime.fromtimestamp(setting_updated, timezone.utc).astimezone(EC_TZ).strftime("%Y-%m-%d %H:%M:%S")
+            if setting_updated else None
+        )
         difference = approximate - current_km if approximate is not None and current_km is not None else None
         output.update({
             "FECHA_EFECTIVA_CALCULO": start.astimezone(EC_TZ).strftime("%Y-%m-%d %H:%M:%S") if start else None,
@@ -365,6 +418,9 @@ def main():
             "COMANDO_ODOMETRO": command_status,
             "FECHA_ULTIMO_COMANDO": row.get("FECHA_ULTIMO_COMANDO"),
             "VALOR_ULTIMO_COMANDO": row.get("VALOR_ULTIMO_COMANDO"),
+            "ESTADO_CONFIGURACION_FLESPI": flespi_status,
+            "VALOR_CONFIGURADO_FLESPI": round(setting_value, 2) if setting_value is not None else None,
+            "FECHA_CONFIGURACION_FLESPI": setting_date,
             "DIAS_ANALIZADOS": report.get("days"),
             "DIAS_COINCIDENCIA_GPS": report.get("matched_days"),
             "DIAS_SALTO_GPS": report.get("gps_jump_days"),
